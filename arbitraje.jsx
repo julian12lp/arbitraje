@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+// Tomamos hooks desde el objeto global React (sin imports)
+const { useMemo, useState } = React;
 
 // Web app: USD -> USDT -> ARS -> USD arbitrage checker using
 // - CriptoYa USDT/USD (min ask)
@@ -51,7 +52,7 @@ const usdtArsAllowed = [
   "mexcp2p",
 ];
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }) {
   return (
     <div className="bg-white/70 backdrop-blur rounded-2xl shadow p-5 border border-slate-200">
       <h2 className="text-xl font-semibold mb-3">{title}</h2>
@@ -60,7 +61,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Pill({ children }: { children: React.ReactNode }) {
+function Pill({ children }) {
   return (
     <span className="inline-block text-xs px-2 py-1 rounded-full border border-slate-300 mr-2 mb-2">
       {children}
@@ -68,40 +69,31 @@ function Pill({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function App() {
-  const [selectedUsdUsd, setSelectedUsdUsd] = useState<Record<string, boolean>>(() => {
-    const init: Record<string, boolean> = {};
+function Arbitraje() {
+  const [selectedUsdUsd, setSelectedUsdUsd] = useState(() => {
+    const init = {};
     usdtUsdAllowed.forEach((k) => (init[k] = true));
     return init; // por defecto: todos seleccionados
   });
 
-  const [selectedUsdArs, setSelectedUsdArs] = useState<Record<string, boolean>>(() => {
-    const init: Record<string, boolean> = {};
+  const [selectedUsdArs, setSelectedUsdArs] = useState(() => {
+    const init = {};
     usdtArsAllowed.forEach((k) => (init[k] = true));
     return init; // por defecto: todos seleccionados
   });
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(null);
 
   // Datos crudos
-  const [usdtUsdData, setUsdtUsdData] = useState<any | null>(null);
-  const [usdtArsData, setUsdtArsData] = useState<any | null>(null);
-  const [dolarOficial, setDolarOficial] = useState<any | null>(null);
+  const [usdtUsdData, setUsdtUsdData] = useState(null);
+  const [usdtArsData, setUsdtArsData] = useState(null);
+  const [dolarOficial, setDolarOficial] = useState(null);
 
   // Resultado del ciclo
-  const [result, setResult] = useState<{
-    step1?: { exchange: string; ask: number; usdtObtained: number };
-    step2?: { exchange: string; bid: number; arsObtained: number };
-    step3?: { nombre: string; venta: number; usdFinal: number };
-    profitPct?: number;
-    timestamp?: string;
-  } | null>(null);
+  const [result, setResult] = useState(null);
 
-  const handleToggle = (
-    group: "usdUsd" | "usdArs",
-    key: string,
-  ) => {
+  const handleToggle = (group, key) => {
     if (group === "usdUsd") {
       setSelectedUsdUsd((s) => ({ ...s, [key]: !s[key] }));
     } else {
@@ -131,8 +123,8 @@ export default function App() {
 
       // Paso 1: elegir min ask en USDT/USD entre seleccionados
       const step1Candidates = Object.entries(d1)
-        .filter(([ex, obj]: any) => selectedUsdUsd[ex] && obj && typeof obj.ask === "number")
-        .map(([ex, obj]: any) => ({ exchange: ex, ask: obj.ask as number }));
+        .filter(([ex, obj]) => selectedUsdUsd[ex] && obj && typeof obj.ask === "number")
+        .map(([ex, obj]) => ({ exchange: ex, ask: obj.ask }));
 
       if (!step1Candidates.length) throw new Error("No hay exchanges seleccionados con 'ask' válido para USDT/USD");
 
@@ -141,8 +133,8 @@ export default function App() {
 
       // Paso 2: elegir max bid en USDT/ARS entre seleccionados
       const step2Candidates = Object.entries(d2)
-        .filter(([ex, obj]: any) => selectedUsdArs[ex] && obj && typeof obj.bid === "number")
-        .map(([ex, obj]: any) => ({ exchange: ex, bid: obj.bid as number }));
+        .filter(([ex, obj]) => selectedUsdArs[ex] && obj && typeof obj.bid === "number")
+        .map(([ex, obj]) => ({ exchange: ex, bid: obj.bid }));
 
       if (!step2Candidates.length) throw new Error("No hay exchanges seleccionados con 'bid' válido para USDT/ARS");
 
@@ -150,7 +142,6 @@ export default function App() {
       const arsObtained = usdtObtained * bestBid.bid; // vender USDT -> ARS
 
       // Paso 3: comprar USD oficial con ARS (venta)
-      // DolarAPI /oficial retorna un objeto con campos { nombre, compra, venta, ... }
       const nombre = d3?.nombre ?? "oficial";
       const venta = Number(d3?.venta);
       if (!venta || isNaN(venta)) throw new Error("DolarAPI: 'venta' inválido");
@@ -171,7 +162,7 @@ export default function App() {
         profitPct,
         timestamp,
       });
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
       setError(e.message || "Error desconocido");
     } finally {
@@ -179,21 +170,23 @@ export default function App() {
     }
   };
 
-  const allUsdUsdChecked = useMemo(() =>
-    usdtUsdAllowed.every((k) => selectedUsdUsd[k]),
-  [selectedUsdUsd]);
+  const allUsdUsdChecked = useMemo(
+    () => usdtUsdAllowed.every((k) => selectedUsdUsd[k]),
+    [selectedUsdUsd]
+  );
 
-  const allUsdArsChecked = useMemo(() =>
-    usdtArsAllowed.every((k) => selectedUsdArs[k]),
-  [selectedUsdArs]);
+  const allUsdArsChecked = useMemo(
+    () => usdtArsAllowed.every((k) => selectedUsdArs[k]),
+    [selectedUsdArs]
+  );
 
-  const toggleAll = (group: "usdUsd" | "usdArs", value: boolean) => {
+  const toggleAll = (group, value) => {
     if (group === "usdUsd") {
-      const next: Record<string, boolean> = {};
+      const next = {};
       usdtUsdAllowed.forEach((k) => (next[k] = value));
       setSelectedUsdUsd(next);
     } else {
-      const next: Record<string, boolean> = {};
+      const next = {};
       usdtArsAllowed.forEach((k) => (next[k] = value));
       setSelectedUsdArs(next);
     }
@@ -290,8 +283,8 @@ export default function App() {
                 </div>
                 <div className="text-right">
                   <div className="text-sm">Ganancia total</div>
-                  <div className={`text-2xl font-bold ${result.profitPct! >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                    {result.profitPct!.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
+                  <div className={`text-2xl font-bold ${result.profitPct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                    {result.profitPct.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
                   </div>
                 </div>
               </div>
@@ -315,5 +308,6 @@ export default function App() {
     </div>
   );
 }
+
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(<Arbitraje />);
