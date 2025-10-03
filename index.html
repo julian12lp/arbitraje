@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arbitraje USD → USDT → ARS → USD (Sin build)</title>
+  <style>
+    :root { --radius: 14px; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji'; background: linear-gradient(135deg,#f8fafc,#e2e8f0); color:#0f172a; margin:0; padding:24px; }
+    .container { max-width: 1000px; margin: 0 auto; display:grid; gap:16px; }
+    h1 { margin: 0 0 8px 0; }
+    .card { background:white; border:1px solid #e2e8f0; border-radius: var(--radius); padding:16px; box-shadow: 0 4px 12px rgba(15,23,42,.05); }
+    .grid { display:grid; gap:12px; }
+    .grid-2 { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    .grid-3 { grid-template-columns: repeat(3,minmax(0,1fr)); }
+    @media (max-width: 720px){ .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+    .row { display:flex; gap:12px; align-items:center; flex-wrap: wrap;}
+    .btn { border:1px solid #cbd5e1; background:white; border-radius: 999px; padding:8px 14px; cursor:pointer; }
+    .btn:disabled { opacity:.6; cursor:default; }
+    .muted { opacity:.7; font-size:.9rem; }
+    .pill { display:inline-block; border:1px solid #cbd5e1; padding:2px 8px; border-radius:999px; font-size:.8rem; }
+    .title { font-weight:700; }
+    .success { color:#047857; }
+    .danger { color:#be123c; }
+    code { background:#f1f5f9; padding:2px 6px; border-radius:8px; }
+    details > summary { cursor:pointer; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .checkbox { display:flex; align-items:center; gap:8px; padding:8px; border:1px solid #e2e8f0; border-radius: 12px; background:white; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="row" style="justify-content: space-between;">
+      <div>
+        <h1>Arbitraje USD → USDT → ARS → USD</h1>
+        <div class="muted">Monto inicial: <b>1 USD</b></div>
+      </div>
+      <div class="row muted">
+        <span class="pill">Sin Node / Sin build</span>
+        <span class="pill">Funciona en GitHub Pages</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title">1) Selección de exchanges (USDT/USD – usar menor <code>ask</code>)</div>
+      <div class="row" style="margin:8px 0;">
+        <button class="btn" id="usdUsdAll">Marcar todo</button>
+        <button class="btn" id="usdUsdNone">Desmarcar todo</button>
+      </div>
+      <div class="grid grid-3" id="usdUsdChecks"></div>
+    </div>
+
+    <div class="card">
+      <div class="title">2) Selección de exchanges (USDT/ARS – usar mayor <code>bid</code>)</div>
+      <div class="row" style="margin:8px 0;">
+        <button class="btn" id="usdArsAll">Marcar todo</button>
+        <button class="btn" id="usdArsNone">Desmarcar todo</button>
+      </div>
+      <div class="grid grid-3" id="usdArsChecks"></div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <button class="btn" id="calcBtn">Calcular ahora</button>
+        <div class="muted">Consulta CriptoYa (USDT/USD, USDT/ARS) + DolarAPI oficial (venta)</div>
+      </div>
+      <div id="status" class="muted" style="margin-top:8px;"></div>
+      <div id="error" class="danger" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="grid" id="results" style="display:none;">
+      <div class="card">
+        <div class="title">Paso 1: Compra de USDT con USD</div>
+        <div id="step1"></div>
+      </div>
+      <div class="card">
+        <div class="title">Paso 2: Venta de USDT por ARS</div>
+        <div id="step2"></div>
+      </div>
+      <div class="card">
+        <div class="title">Paso 3: Compra de USD con ARS (Dólar oficial)</div>
+        <div id="step3"></div>
+      </div>
+      <div class="card row" style="justify-content: space-between;">
+        <div>
+          <div class="muted">Fecha de consulta (America/Argentina/Buenos_Aires):</div>
+          <div id="timestamp" class="title"></div>
+        </div>
+        <div style="text-align:right;">
+          <div class="muted">Ganancia total</div>
+          <div id="profit" class="title"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="title">Datos crudos (depuración rápida)</div>
+        <details>
+          <summary>Ver JSON</summary>
+          <pre class="mono" id="raw" style="white-space:pre-wrap; overflow:auto; max-height:300px;"></pre>
+        </details>
+      </div>
+    </div>
+
+    <div class="muted" style="font-size:.8rem;">
+      Nota: Demo sin comisiones, límites, tiempos de acreditación ni riesgos de contraparte. Verifica CEX/P2P/PSP, compliance y límites de on/off-ramp antes de operar.
+    </div>
+  </div>
+
+  <script>
+    const usdtUsdAllowed = [
+      "buenbit","satoshitango","letsbit","binancep2p","fiwind","okexp2p","belo","tiendacrypto"
+    ];
+    const usdtArsAllowed = [
+      "buenbit","ripio","ripioexchange","satoshitango","decrypto","letsbit","binancep2p","fiwind","lemoncash",
+      "okexp2p","paxfulp2p","belo","tiendacrypto","bybitp2p","kucoinp2p","bitgetp2p","bybit","binance",
+      "bingxp2p","bitsoalpha","lemoncashp2p","cocoscrypto","mexcp2p"
+    ];
+
+    function renderChecks(containerId, keys, group){
+      const el = document.getElementById(containerId);
+      el.innerHTML = '';
+      keys.forEach(k => {
+        const id = group + '-' + k;
+        const item = document.createElement('label');
+        item.className = 'checkbox';
+        item.innerHTML = \`
+          <input type="checkbox" id="\${id}" checked />
+          <span style="text-transform:capitalize">\${k}</span>
+        \`;
+        el.appendChild(item);
+      });
+    }
+
+    function getSelected(keys, group){
+      const set = new Set();
+      keys.forEach(k => {
+        const id = group + '-' + k;
+        const cb = document.getElementById(id);
+        if(cb && cb.checked) set.add(k);
+      });
+      return set;
+    }
+
+    function setAll(keys, group, value){
+      keys.forEach(k => {
+        const id = group + '-' + k;
+        const cb = document.getElementById(id);
+        if(cb) cb.checked = !!value;
+      });
+    }
+
+    function fmt(num, opts){ return Number(num).toLocaleString('es-AR', opts || { minimumFractionDigits: 2, maximumFractionDigits: 6 }); }
+
+    async function calculate(){
+      const status = document.getElementById('status');
+      const err = document.getElementById('error');
+      const results = document.getElementById('results');
+      status.textContent = 'Consultando APIs…';
+      err.textContent = '';
+      results.style.display = 'none';
+
+      const selUsdUsd = getSelected(usdtUsdAllowed, 'usdUsd');
+      const selUsdArs = getSelected(usdtArsAllowed, 'usdArs');
+
+      try {
+        const [r1, r2, r3] = await Promise.all([
+          fetch('https://criptoya.com/api/USDT/USD/0.1'),
+          fetch('https://criptoya.com/api/USDT/ARS/0.1'),
+          fetch('https://dolarapi.com/v1/dolares/oficial')
+        ]);
+        if(!r1.ok) throw new Error('Error al consultar USDT/USD en CriptoYa');
+        if(!r2.ok) throw new Error('Error al consultar USDT/ARS en CriptoYa');
+        if(!r3.ok) throw new Error('Error al consultar DolarAPI oficial');
+
+        const [d1, d2, d3] = await Promise.all([r1.json(), r2.json(), r3.json()]);
+
+        const step1Candidates = Object.entries(d1)
+          .filter(([ex, obj]) => selUsdUsd.has(ex) && obj && typeof obj.ask === 'number')
+          .map(([ex, obj]) => ({ exchange: ex, ask: obj.ask }));
+        if(step1Candidates.length === 0) throw new Error("No hay exchanges seleccionados con 'ask' válido para USDT/USD");
+        const bestAsk = step1Candidates.reduce((min, cur) => cur.ask < min.ask ? cur : min);
+        const usdtObtained = 1 / bestAsk.ask;
+
+        const step2Candidates = Object.entries(d2)
+          .filter(([ex, obj]) => selUsdArs.has(ex) && obj && typeof obj.bid === 'number')
+          .map(([ex, obj]) => ({ exchange: ex, bid: obj.bid }));
+        if(step2Candidates.length === 0) throw new Error("No hay exchanges seleccionados con 'bid' válido para USDT/ARS");
+        const bestBid = step2Candidates.reduce((max, cur) => cur.bid > max.bid ? cur : max);
+        const arsObtained = usdtObtained * bestBid.bid;
+
+        const nombre = d3 && d3.nombre ? d3.nombre : 'oficial';
+        const venta = Number(d3 && d3.venta);
+        if(!venta || isNaN(venta)) throw new Error("DolarAPI: 'venta' inválido");
+        const usdFinal = arsObtained / venta;
+        const profitPct = (usdFinal - 1) * 100;
+
+        const ts = new Intl.DateTimeFormat('es-AR', { dateStyle: 'full', timeStyle: 'medium', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
+
+        // Render
+        document.getElementById('step1').innerHTML = \`
+          Exchange: <b>\${bestAsk.exchange}</b> — ask: <b>\${fmt(bestAsk.ask)}</b> (USDT/USD)<br>
+          USDT obtenidos desde 1 USD: <b>\${fmt(usdtObtained, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}</b>
+        \`;
+
+        document.getElementById('step2').innerHTML = \`
+          Exchange: <b>\${bestBid.exchange}</b> — bid: <b>\${fmt(bestBid.bid, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b> (ARS/USDT)<br>
+          ARS obtenidos: <b>\${fmt(arsObtained, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
+        \`;
+
+        document.getElementById('step3').innerHTML = \`
+          Cotización: <b>\${nombre}</b> — venta: <b>\${fmt(venta, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b> (ARS/USD)<br>
+          USD finales: <b>\${fmt(usdFinal, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}</b>
+        \`;
+
+        document.getElementById('timestamp').textContent = ts;
+        const profitEl = document.getElementById('profit');
+        const profitFmt = (profitPct).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+        profitEl.textContent = profitFmt;
+        profitEl.className = 'title ' + (profitPct >= 0 ? 'success' : 'danger');
+
+        const raw = {
+          criptoya: { USDT_USD: d1, USDT_ARS: d2 },
+          dolarapi: d3,
+          seleccion: { USDT_USD: Array.from(selUsdUsd), USDT_ARS: Array.from(selUsdArs) }
+        };
+        document.getElementById('raw').textContent = JSON.stringify(raw, null, 2);
+
+        results.style.display = 'grid';
+        status.textContent = 'Listo.';
+      } catch(e){
+        console.error(e);
+        err.textContent = e.message || 'Error desconocido';
+        status.textContent = '';
+      }
+    }
+
+    // Init UI
+    renderChecks('usdUsdChecks', usdtUsdAllowed, 'usdUsd');
+    renderChecks('usdArsChecks', usdtArsAllowed, 'usdArs');
+
+    document.getElementById('usdUsdAll').onclick = () => setAll(usdtUsdAllowed, 'usdUsd', true);
+    document.getElementById('usdUsdNone').onclick = () => setAll(usdtUsdAllowed, 'usdUsd', false);
+    document.getElementById('usdArsAll').onclick = () => setAll(usdtArsAllowed, 'usdArs', true);
+    document.getElementById('usdArsNone').onclick = () => setAll(usdtArsAllowed, 'usdArs', false);
+    document.getElementById('calcBtn').onclick = calculate;
+  </script>
+</body>
+</html>
