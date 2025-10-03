@@ -86,9 +86,9 @@ function Arbitraje() {
   const [error, setError] = useState(null);
 
   // Datos crudos
-  const [usdtUsdData, setUsdtUsdData] = useState(null);
-  const [usdtArsData, setUsdtArsData] = useState(null);
-  const [dolarOficial, setDolarOficial] = useState(null);
+  //const [usdtUsdData, setUsdtUsdData] = useState(null);
+  //const [usdtArsData, setUsdtArsData] = useState(null);
+  //const [dolarOficial, setDolarOficial] = useState(null);
 
   // Resultado del ciclo
   const [result, setResult] = useState(null);
