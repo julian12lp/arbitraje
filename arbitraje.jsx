@@ -126,7 +126,7 @@ function Arbitraje() {
         .filter(([ex, obj]) => selectedUsdUsd[ex] && obj && typeof obj.ask === "number")
         .map(([ex, obj]) => ({ exchange: ex, ask: obj.ask }));
 
-      if (!step1Candidates.length) throw new Error("No hay exchanges seleccionados con 'ask' válido para USDT/USD");
+      if (!step1Candidates.length) throw new Error("No hay exchanges seleccionados con cotizaciones válidas para USDT/USD");
 
       const bestAsk = step1Candidates.reduce((min, cur) => (cur.ask < min.ask ? cur : min));
       const usdtObtained = 1 / bestAsk.ask; // 1 USD -> USDT
@@ -136,7 +136,7 @@ function Arbitraje() {
         .filter(([ex, obj]) => selectedUsdArs[ex] && obj && typeof obj.bid === "number")
         .map(([ex, obj]) => ({ exchange: ex, bid: obj.bid }));
 
-      if (!step2Candidates.length) throw new Error("No hay exchanges seleccionados con 'bid' válido para USDT/ARS");
+      if (!step2Candidates.length) throw new Error("No hay exchanges seleccionados cotizaciones válidas para USDT/ARS");
 
       const bestBid = step2Candidates.reduce((max, cur) => (cur.bid > max.bid ? cur : max));
       const arsObtained = usdtObtained * bestBid.bid; // vender USDT -> ARS
@@ -200,7 +200,7 @@ function Arbitraje() {
           <div className="text-sm opacity-80">Monto inicial: <strong>1 USD</strong></div>
         </header>
 
-        <Section title="1) Selección de exchanges (USDT/USD – usar menor 'ask')">
+        <Section title="1) Selección de exchanges (USD > USDT)">
           <div className="flex items-center gap-4 mb-3">
             <button onClick={() => toggleAll("usdUsd", true)} className="px-3 py-1 rounded-xl border">Marcar todo</button>
             <button onClick={() => toggleAll("usdUsd", false)} className="px-3 py-1 rounded-xl border">Desmarcar todo</button>
@@ -219,7 +219,7 @@ function Arbitraje() {
           </div>
         </Section>
 
-        <Section title="2) Selección de exchanges (USDT/ARS – usar mayor 'bid')">
+        <Section title="2) Selección de exchanges (USDT > ARS)">
           <div className="flex items-center gap-4 mb-3">
             <button onClick={() => toggleAll("usdArs", true)} className="px-3 py-1 rounded-xl border">Marcar todo</button>
             <button onClick={() => toggleAll("usdArs", false)} className="px-3 py-1 rounded-xl border">Desmarcar todo</button>
