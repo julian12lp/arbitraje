@@ -4,19 +4,7 @@ const { useMemo, useState } = React;
 // Web app: USD -> USDT -> ARS -> USD arbitrage checker using
 // - CriptoYa USDT/USD (min ask)
 // - CriptoYa USDT/ARS (max bid)
-// - DolarAPI oficial (venta)
-//
-// Requisitos del usuario:
-// 1) Compra de USDT con USD: https://criptoya.com/api/USDT/USD/0.1
-//    - usar menor valor "ask"
-//    - filtrar por exchanges seleccionados via checkboxes
-// 2) Venta de USDT por ARS: https://criptoya.com/api/USDT/ARS/0.1
-//    - usar mayor valor "bid"
-//    - filtrar por exchanges seleccionados via checkboxes
-// 3) Compra de USD con ARS: https://dolarapi.com/v1/dolares/oficial
-//    - usar valor "venta" (y mostrar también "nombre")
-// 4) Monto inicial fijo: 1 USD
-// 5) Devolver detalle paso a paso + % de ganancia y fecha de consulta
+// - DolarAPI oficial (venta) o valor manual
 
 const usdtUsdAllowed = [
   "buenbit",
@@ -82,6 +70,10 @@ function Arbitraje() {
     return init; // por defecto: todos seleccionados
   });
 
+  // NUEVO: modo de cotización del último paso (API oficial o manual) + valor manual
+  const [rateMode, setRateMode] = useState("api"); // 'api' | 'manual'
+  const [manualVenta, setManualVenta] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -106,48 +98,59 @@ function Arbitraje() {
     setError(null);
     setResult(null);
     try {
-      const [r1, r2, r3] = await Promise.all([
-        fetch("https://criptoya.com/api/USDT/USD/0.1"),
-        fetch("https://criptoya.com/api/USDT/ARS/0.1"),
-        fetch("https://dolarapi.com/v1/dolares/oficial"),
-      ]);
+      // 1) USDT/USD y USDT/ARS
+      const r1 = await fetch("https://criptoya.com/api/USDT/USD/0.1");
+      const r2 = await fetch("https://criptoya.com/api/USDT/ARS/0.1");
 
       if (!r1.ok) throw new Error("Error al consultar USDT/USD en CriptoYa");
       if (!r2.ok) throw new Error("Error al consultar USDT/ARS en CriptoYa");
-      if (!r3.ok) throw new Error("Error al consultar DolarAPI oficial");
 
-      const [d1, d2, d3] = await Promise.all([r1.json(), r2.json(), r3.json()]);
+      const d1 = await r1.json();
+      const d2 = await r2.json();
       setUsdtUsdData(d1);
       setUsdtArsData(d2);
-      setDolarOficial(d3);
 
-      // Paso 1: elegir min ask en USDT/USD entre seleccionados
+      // Paso 1: min ask en USDT/USD
       const step1Candidates = Object.entries(d1)
         .filter(([ex, obj]) => selectedUsdUsd[ex] && obj && typeof obj.ask === "number")
         .map(([ex, obj]) => ({ exchange: ex, ask: obj.ask }));
 
-      if (!step1Candidates.length) throw new Error("No hay exchanges seleccionados con cotizaciones válidas para USDT/USD");
+      if (!step1Candidates.length) throw new Error("No hay exchanges seleccionados con 'ask' válido para USDT/USD");
 
       const bestAsk = step1Candidates.reduce((min, cur) => (cur.ask < min.ask ? cur : min));
       const usdtObtained = 1 / bestAsk.ask; // 1 USD -> USDT
 
-      // Paso 2: elegir max bid en USDT/ARS entre seleccionados
+      // Paso 2: max bid en USDT/ARS
       const step2Candidates = Object.entries(d2)
         .filter(([ex, obj]) => selectedUsdArs[ex] && obj && typeof obj.bid === "number")
         .map(([ex, obj]) => ({ exchange: ex, bid: obj.bid }));
 
-      if (!step2Candidates.length) throw new Error("No hay exchanges seleccionados cotizaciones válidas para USDT/ARS");
+      if (!step2Candidates.length) throw new Error("No hay exchanges seleccionados con 'bid' válido para USDT/ARS");
 
       const bestBid = step2Candidates.reduce((max, cur) => (cur.bid > max.bid ? cur : max));
       const arsObtained = usdtObtained * bestBid.bid; // vender USDT -> ARS
 
-      // Paso 3: comprar USD oficial con ARS (venta)
-      const nombre = d3?.nombre ?? "oficial";
-      const venta = Number(d3?.venta);
-      if (!venta || isNaN(venta)) throw new Error("DolarAPI: 'venta' inválido");
-      const usdFinal = arsObtained / venta; // ARS -> USD
+      // Paso 3 (ajustado): usar DolarAPI oficial o valor manual
+      let nombre, venta;
 
-      const profitPct = ((usdFinal - 1) / 1) * 100;
+      if (rateMode === "api") {
+        const r3 = await fetch("https://dolarapi.com/v1/dolares/oficial");
+        if (!r3.ok) throw new Error("Error al consultar DolarAPI oficial");
+        const d3 = await r3.json();
+        setDolarOficial(d3);
+        nombre = d3?.nombre ?? "oficial";
+        venta = Number(d3?.venta);
+        if (!venta || isNaN(venta)) throw new Error("DolarAPI: 'venta' inválido");
+      } else {
+        nombre = "Manual";
+        venta = Number(manualVenta);
+        if (!venta || isNaN(venta) || venta <= 0) {
+          throw new Error("Ingresá un valor manual válido (ARS por USD)");
+        }
+      }
+
+      const usdFinal = arsObtained / venta; // ARS -> USD
+      const profitPct = (usdFinal - 1) * 100;
 
       const timestamp = new Intl.DateTimeFormat("es-AR", {
         dateStyle: "full",
@@ -200,7 +203,7 @@ function Arbitraje() {
           <div className="text-sm opacity-80">Monto inicial: <strong>1 USD</strong></div>
         </header>
 
-        <Section title="1) Selección de exchanges (USD > USDT)">
+        <Section title="1) Selección de exchanges (USDT/USD – usar menor 'ask')">
           <div className="flex items-center gap-4 mb-3">
             <button onClick={() => toggleAll("usdUsd", true)} className="px-3 py-1 rounded-xl border">Marcar todo</button>
             <button onClick={() => toggleAll("usdUsd", false)} className="px-3 py-1 rounded-xl border">Desmarcar todo</button>
@@ -219,7 +222,7 @@ function Arbitraje() {
           </div>
         </Section>
 
-        <Section title="2) Selección de exchanges (USDT > ARS)">
+        <Section title="2) Selección de exchanges (USDT/ARS – usar mayor 'bid')">
           <div className="flex items-center gap-4 mb-3">
             <button onClick={() => toggleAll("usdArs", true)} className="px-3 py-1 rounded-xl border">Marcar todo</button>
             <button onClick={() => toggleAll("usdArs", false)} className="px-3 py-1 rounded-xl border">Desmarcar todo</button>
@@ -238,7 +241,51 @@ function Arbitraje() {
           </div>
         </Section>
 
-        <Section title="3) Calcular ciclo de arbitraje">
+        {/* NUEVO: filtro entre paso 2 y 3 */}
+        <Section title="3) Cotización para compra de USD (elegí fuente)">
+          <div className="grid gap-3">
+            <label className="flex items-center gap-2 p-3 rounded-xl border bg-white">
+              <input
+                type="radio"
+                name="rateMode"
+                value="api"
+                checked={rateMode === "api"}
+                onChange={() => setRateMode("api")}
+              />
+              <span>Usar DolarAPI — <em>oficial</em></span>
+              {dolarOficial && (
+                <Pill>venta: {Number(dolarOficial.venta).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Pill>
+              )}
+            </label>
+
+            <label className="flex flex-col gap-2 p-3 rounded-xl border bg-white">
+              <span className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="rateMode"
+                  value="manual"
+                  checked={rateMode === "manual"}
+                  onChange={() => setRateMode("manual")}
+                />
+                <span>Usar valor manual</span>
+              </span>
+              <div className="flex items-center gap-2 pl-6">
+                <span className="text-sm opacity-75 w-40">ARS por USD (venta)</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Ej: 1450.00"
+                  className="px-3 py-1 rounded-xl border w-40"
+                  value={manualVenta}
+                  onChange={(e) => setManualVenta(e.target.value)}
+                  disabled={rateMode !== "manual"}
+                />
+              </div>
+            </label>
+          </div>
+        </Section>
+
+        <Section title="4) Calcular ciclo de arbitraje">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <button
               onClick={fetchAll}
@@ -247,7 +294,9 @@ function Arbitraje() {
             >
               {loading ? "Calculando..." : "Calcular ahora"}
             </button>
-            <div className="text-sm opacity-75">Consulta CriptoYa (USDT/USD, USDT/ARS) + DolarAPI oficial (venta)</div>
+            <div className="text-sm opacity-75">
+              Consulta CriptoYa (USDT/USD, USDT/ARS) + {rateMode === "api" ? "DolarAPI oficial (venta)" : "valor manual (venta)"}
+            </div>
           </div>
 
           {error && (
@@ -271,8 +320,11 @@ function Arbitraje() {
               </div>
 
               <div className="p-4 rounded-2xl border bg-white">
-                <h3 className="font-semibold mb-2">Paso 3: Compra de USD con ARS (Dólar oficial)</h3>
-                <p className="text-sm">Cotización: <strong>{result.step3?.nombre}</strong> — venta: <strong>{result.step3?.venta?.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> (ARS/USD)</p>
+                <h3 className="font-semibold mb-2">Paso 3: Compra de USD con ARS</h3>
+                <div className="flex items-center gap-2 mb-1">
+                  <Pill>Fuente: {result.step3?.nombre}</Pill>
+                </div>
+                <p className="text-sm">Cotización — venta: <strong>{result.step3?.venta?.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> (ARS/USD)</p>
                 <p className="text-sm">USD finales: <strong>{result.step3?.usdFinal?.toLocaleString("es-AR", { minimumFractionDigits: 6, maximumFractionDigits: 6 })}</strong></p>
               </div>
 
@@ -289,7 +341,14 @@ function Arbitraje() {
                 </div>
               </div>
 
-              
+              <div className="p-4 rounded-2xl border bg-white">
+                <h3 className="font-semibold mb-2">Datos crudos (depuración rápida)</h3>
+                <div className="text-xs max-h-72 overflow-auto whitespace-pre-wrap break-all">
+                  <p className="mb-2"><strong>USDT/USD (CriptoYa):</strong> {usdtUsdData ? JSON.stringify(usdtUsdData) : "—"}</p>
+                  <p className="mb-2"><strong>USDT/ARS (CriptoYa):</strong> {usdtArsData ? JSON.stringify(usdtArsData) : "—"}</p>
+                  <p className="mb-2"><strong>DolarAPI oficial:</strong> {dolarOficial ? JSON.stringify(dolarOficial) : "—"}</p>
+                </div>
+              </div>
             </div>
           )}
         </Section>
