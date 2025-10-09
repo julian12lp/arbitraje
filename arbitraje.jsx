@@ -203,7 +203,7 @@ function Arbitraje() {
           <div className="text-sm opacity-80">Monto inicial: <strong>1 USD</strong></div>
         </header>
 
-        <Section title="1) Selección de exchanges (USDT/USD – usar menor 'ask')">
+        <Section title="1) Selección de exchanges (USDT/USD)">
           <div className="flex items-center gap-4 mb-3">
             <button onClick={() => toggleAll("usdUsd", true)} className="px-3 py-1 rounded-xl border">Marcar todo</button>
             <button onClick={() => toggleAll("usdUsd", false)} className="px-3 py-1 rounded-xl border">Desmarcar todo</button>
@@ -222,7 +222,7 @@ function Arbitraje() {
           </div>
         </Section>
 
-        <Section title="2) Selección de exchanges (USDT/ARS – usar mayor 'bid')">
+        <Section title="2) Selección de exchanges (USDT/ARS)">
           <div className="flex items-center gap-4 mb-3">
             <button onClick={() => toggleAll("usdArs", true)} className="px-3 py-1 rounded-xl border">Marcar todo</button>
             <button onClick={() => toggleAll("usdArs", false)} className="px-3 py-1 rounded-xl border">Desmarcar todo</button>
