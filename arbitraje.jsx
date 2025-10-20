@@ -265,7 +265,7 @@ function Arbitraje() {
           </div>
         </header>
 
-        {/* USDT/USD — sin compra/venta, solo min ASK o manual */}
+        {/* USDT/USD */}
         <Section title="1) Selección de exchanges (USDT/USD — usar menor 'ask')">
           <div className="flex flex-wrap items-center gap-4 mb-3">
             <div className="flex items-center gap-2">
@@ -293,7 +293,11 @@ function Arbitraje() {
                 type="number"
                 step="0.000001"
                 placeholder="Precio USDT/USD (ask)"
-                className="px-3 py-1 rounded-xl border w-48 disabled:opacity-50"
+                className="px-3 py-1 rounded-xl border w-48 disabled:opacity-50
+                          bg-white text-slate-900 placeholder-slate-400
+                          dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500
+                          border-slate-300 dark:border-slate-600
+                          focus:outline-none focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-700"
                 value={manualUsdUsd}
                 onChange={(e) => setManualUsdUsd(e.target.value)}
                 disabled={priceModeUsdUsd !== "manual"}
@@ -372,7 +376,11 @@ function Arbitraje() {
                 type="number"
                 step="0.01"
                 placeholder="Precio USDT/ARS"
-                className="px-3 py-1 rounded-xl border w-44 disabled:opacity-50"
+                className="px-3 py-1 rounded-xl border w-44 disabled:opacity-50
+                            bg-white text-slate-900 placeholder-slate-400
+                            dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500
+                            border-slate-300 dark:border-slate-600
+                            focus:outline-none focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-700"
                 value={manualUsdArs}
                 onChange={(e) => setManualUsdArs(e.target.value)}
                 disabled={priceModeUsdArs !== "manual"}
@@ -433,7 +441,11 @@ function Arbitraje() {
                   type="number"
                   step="0.01"
                   placeholder="Ej: 1450.00"
-                  className="px-3 py-1 rounded-xl border w-40"
+                  className="px-3 py-1 rounded-xl border w-40
+                              bg-white text-slate-900 placeholder-slate-400
+                              dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500
+                              border-slate-300 dark:border-slate-600
+                              focus:outline-none focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-700"
                   value={manualVenta}
                   onChange={(e) => setManualVenta(e.target.value)}
                   disabled={rateMode !== "manual"}
