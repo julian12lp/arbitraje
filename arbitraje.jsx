@@ -1,10 +1,10 @@
-// Tomamos hooks desde el objeto global React (sin imports)
-const { useMemo, useState } = React;
+// Hooks desde el objeto global React (sin imports)
+const { useMemo, useState, useEffect } = React;
 
-// Web app: USD -> USDT -> ARS -> USD arbitrage checker using
-// - CriptoYa USDT/USD (min ask)
-// - CriptoYa USDT/ARS (max bid)
-// - DolarAPI oficial (venta) o valor manual
+// Web app: USD -> USDT -> ARS -> USD arbitrage checker
+// - USDT/USD: usa SIEMPRE el menor ASK (o precio manual)
+// - USDT/ARS: permite elegir COMPRA(ASK) o VENTA(BID) (o precio manual)
+// - USD final: DolarAPI oficial (venta) o valor manual
 
 const usdtUsdAllowed = [
   "buenbit",
@@ -42,7 +42,7 @@ const usdtArsAllowed = [
 
 function Section({ title, children }) {
   return (
-    <div className="bg-white/70 backdrop-blur rounded-2xl shadow p-5 border border-slate-200">
+    <div className="bg-white/70 dark:bg-white/10 backdrop-blur rounded-2xl shadow p-5 border border-slate-200 dark:border-slate-700">
       <h2 className="text-xl font-semibold mb-3">{title}</h2>
       {children}
     </div>
@@ -51,38 +51,54 @@ function Section({ title, children }) {
 
 function Pill({ children }) {
   return (
-    <span className="inline-block text-xs px-2 py-1 rounded-full border border-slate-300 mr-2 mb-2">
+    <span className="inline-block text-xs px-2 py-1 rounded-full border border-slate-300 dark:border-slate-600 mr-2 mb-2">
       {children}
     </span>
   );
 }
 
 function Arbitraje() {
+  // Dark mode
+  const [dark, setDark] = useState(false);
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", dark);
+  }, [dark]);
+
+  // Selección de exchanges
   const [selectedUsdUsd, setSelectedUsdUsd] = useState(() => {
     const init = {};
     usdtUsdAllowed.forEach((k) => (init[k] = true));
-    return init; // por defecto: todos seleccionados
+    return init;
   });
-
   const [selectedUsdArs, setSelectedUsdArs] = useState(() => {
     const init = {};
     usdtArsAllowed.forEach((k) => (init[k] = true));
-    return init; // por defecto: todos seleccionados
+    return init;
   });
 
-  // NUEVO: modo de cotización del último paso (API oficial o manual) + valor manual
+  // USDT/USD: precio automático (API) o manual — SIEMPRE min ASK
+  const [priceModeUsdUsd, setPriceModeUsdUsd] = useState("auto"); // 'auto' | 'manual'
+  const [manualUsdUsd, setManualUsdUsd] = useState("");
+
+  // USDT/ARS: precio automático o manual + lado (compra/venta)
+  const [sideUsdArs, setSideUsdArs] = useState("venta"); // 'compra' | 'venta'
+  const [priceModeUsdArs, setPriceModeUsdArs] = useState("auto"); // 'auto' | 'manual'
+  const [manualUsdArs, setManualUsdArs] = useState("");
+
+  // USD final: API oficial o manual
   const [rateMode, setRateMode] = useState("api"); // 'api' | 'manual'
   const [manualVenta, setManualVenta] = useState("");
 
+  // Estado general
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Datos crudos
+  // Datos crudos (debug)
   const [usdtUsdData, setUsdtUsdData] = useState(null);
   const [usdtArsData, setUsdtArsData] = useState(null);
   const [dolarOficial, setDolarOficial] = useState(null);
 
-  // Resultado del ciclo
+  // Resultado
   const [result, setResult] = useState(null);
 
   const handleToggle = (group, key) => {
@@ -98,41 +114,80 @@ function Arbitraje() {
     setError(null);
     setResult(null);
     try {
-      // 1) USDT/USD y USDT/ARS
-      const r1 = await fetch("https://criptoya.com/api/USDT/USD/0.1");
-      const r2 = await fetch("https://criptoya.com/api/USDT/ARS/0.1");
+      // Traemos de CriptoYa lo necesario según modo
+      let d1 = null, d2 = null;
 
-      if (!r1.ok) throw new Error("Error al consultar USDT/USD en CriptoYa");
-      if (!r2.ok) throw new Error("Error al consultar USDT/ARS en CriptoYa");
+      if (priceModeUsdUsd === "auto") {
+        const r1 = await fetch("https://criptoya.com/api/USDT/USD/0.1");
+        if (!r1.ok) throw new Error("Error al consultar USDT/USD en CriptoYa");
+        d1 = await r1.json();
+        setUsdtUsdData(d1);
+      } else {
+        setUsdtUsdData(null);
+      }
 
-      const d1 = await r1.json();
-      const d2 = await r2.json();
-      setUsdtUsdData(d1);
-      setUsdtArsData(d2);
+      if (priceModeUsdArs === "auto") {
+        const r2 = await fetch("https://criptoya.com/api/USDT/ARS/0.1");
+        if (!r2.ok) throw new Error("Error al consultar USDT/ARS en CriptoYa");
+        d2 = await r2.json();
+        setUsdtArsData(d2);
+      } else {
+        setUsdtArsData(null);
+      }
 
-      // Paso 1: min ask en USDT/USD
-      const step1Candidates = Object.entries(d1)
-        .filter(([ex, obj]) => selectedUsdUsd[ex] && obj && typeof obj.ask === "number")
-        .map(([ex, obj]) => ({ exchange: ex, ask: obj.ask }));
+      // Paso 1: USDT/USD — SIEMPRE min ASK (o manual)
+      let step1Exchange = "Manual";
+      let step1Ask = Number(manualUsdUsd);
+      if (priceModeUsdUsd === "auto") {
+        const candidates = Object.entries(d1 || {})
+          .filter(([ex, obj]) => selectedUsdUsd[ex] && obj && typeof obj.ask === "number")
+          .map(([ex, obj]) => ({ exchange: ex, ask: obj.ask }));
 
-      if (!step1Candidates.length) throw new Error("No hay exchanges seleccionados con 'ask' válido para USDT/USD");
+        if (!candidates.length) throw new Error("USDT/USD: no hay exchanges seleccionados con 'ask' válido");
 
-      const bestAsk = step1Candidates.reduce((min, cur) => (cur.ask < min.ask ? cur : min));
-      const usdtObtained = 1 / bestAsk.ask; // 1 USD -> USDT
+        const best = candidates.reduce((min, cur) => (cur.ask < min.ask ? cur : min));
+        step1Exchange = best.exchange;
+        step1Ask = best.ask;
+      } else {
+        if (!step1Ask || isNaN(step1Ask) || step1Ask <= 0) {
+          throw new Error("USDT/USD: ingresá un precio manual (ask) válido");
+        }
+      }
 
-      // Paso 2: max bid en USDT/ARS
-      const step2Candidates = Object.entries(d2)
-        .filter(([ex, obj]) => selectedUsdArs[ex] && obj && typeof obj.bid === "number")
-        .map(([ex, obj]) => ({ exchange: ex, bid: obj.bid }));
+      // 1 USD -> USDT
+      const usdtObtained = 1 / step1Ask;
 
-      if (!step2Candidates.length) throw new Error("No hay exchanges seleccionados con 'bid' válido para USDT/ARS");
+      // Paso 2: USDT/ARS — según lado (compra=ASK min, venta=BID máx) o manual
+      let step2Exchange = "Manual";
+      let step2Price = Number(manualUsdArs);
+      if (priceModeUsdArs === "auto") {
+        const candidates = Object.entries(d2 || {})
+          .filter(([ex, obj]) => selectedUsdArs[ex] && obj && typeof obj.ask === "number" && typeof obj.bid === "number")
+          .map(([ex, obj]) => ({ exchange: ex, ask: obj.ask, bid: obj.bid }));
 
-      const bestBid = step2Candidates.reduce((max, cur) => (cur.bid > max.bid ? cur : max));
-      const arsObtained = usdtObtained * bestBid.bid; // vender USDT -> ARS
+        if (!candidates.length) throw new Error("USDT/ARS: no hay exchanges seleccionados con datos válidos");
 
-      // Paso 3 (ajustado): usar DolarAPI oficial o valor manual
+        if (sideUsdArs === "venta") {
+          const best = candidates.reduce((max, cur) => (cur.bid > max.bid ? cur : max));
+          step2Exchange = best.exchange;
+          step2Price = best.bid;
+        } else {
+          const best = candidates.reduce((min, cur) => (cur.ask < min.ask ? cur : min));
+          step2Exchange = best.exchange;
+          step2Price = best.ask;
+        }
+      } else {
+        if (!step2Price || isNaN(step2Price) || step2Price <= 0) {
+          throw new Error("USDT/ARS: ingresá un precio manual válido");
+        }
+      }
+
+      // USDT -> ARS (si elegiste compra en ARS, este paso semánticamente sería al revés,
+      // pero para el cálculo mantenemos: ARS = USDT * precio seleccionado)
+      const arsObtained = usdtObtained * step2Price;
+
+      // Paso 3: Dólar oficial o manual (venta)
       let nombre, venta;
-
       if (rateMode === "api") {
         const r3 = await fetch("https://dolarapi.com/v1/dolares/oficial");
         if (!r3.ok) throw new Error("Error al consultar DolarAPI oficial");
@@ -149,9 +204,8 @@ function Arbitraje() {
         }
       }
 
-      const usdFinal = arsObtained / venta; // ARS -> USD
+      const usdFinal = arsObtained / venta;
       const profitPct = (usdFinal - 1) * 100;
-
       const timestamp = new Intl.DateTimeFormat("es-AR", {
         dateStyle: "full",
         timeStyle: "medium",
@@ -159,8 +213,8 @@ function Arbitraje() {
       }).format(new Date());
 
       setResult({
-        step1: { exchange: bestAsk.exchange, ask: bestAsk.ask, usdtObtained },
-        step2: { exchange: bestBid.exchange, bid: bestBid.bid, arsObtained },
+        step1: { exchange: step1Exchange, ask: step1Ask, usdtObtained },
+        step2: { exchange: step2Exchange, side: sideUsdArs, price: step2Price, arsObtained },
         step3: { nombre, venta, usdFinal },
         profitPct,
         timestamp,
@@ -177,7 +231,6 @@ function Arbitraje() {
     () => usdtUsdAllowed.every((k) => selectedUsdUsd[k]),
     [selectedUsdUsd]
   );
-
   const allUsdArsChecked = useMemo(
     () => usdtArsAllowed.every((k) => selectedUsdArs[k]),
     [selectedUsdArs]
@@ -196,21 +249,66 @@ function Arbitraje() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-200 text-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-200 dark:from-slate-900 dark:to-slate-950 text-slate-900 dark:text-slate-100 p-6">
       <div className="max-w-5xl mx-auto grid gap-6">
         <header className="flex items-center justify-between">
           <h1 className="text-2xl md:text-3xl font-bold">Arbitraje USD → USDT → ARS → USD</h1>
-          <div className="text-sm opacity-80">Monto inicial: <strong>1 USD</strong></div>
+          <div className="flex items-center gap-3">
+            <div className="text-sm opacity-80">Monto inicial: <strong>1 USD</strong></div>
+            <button
+              onClick={() => setDark((d) => !d)}
+              className="px-3 py-1 rounded-xl border border-slate-300 dark:border-slate-600 bg-white/70 dark:bg-slate-800 hover:shadow"
+              title="Cambiar tema"
+            >
+              {dark ? "☀️ Light" : "🌙 Dark"}
+            </button>
+          </div>
         </header>
 
-        <Section title="1) Selección de exchanges (USDT/USD)">
-          <div className="flex items-center gap-4 mb-3">
-            <button onClick={() => toggleAll("usdUsd", true)} className="px-3 py-1 rounded-xl border">Marcar todo</button>
-            <button onClick={() => toggleAll("usdUsd", false)} className="px-3 py-1 rounded-xl border">Desmarcar todo</button>
+        {/* USDT/USD — sin compra/venta, solo min ASK o manual */}
+        <Section title="1) Selección de exchanges (USDT/USD — usar menor 'ask')">
+          <div className="flex flex-wrap items-center gap-4 mb-3">
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="priceModeUsdUsd"
+                  value="auto"
+                  checked={priceModeUsdUsd === "auto"}
+                  onChange={() => setPriceModeUsdUsd("auto")}
+                />
+                <span>Precio de la API</span>
+              </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="priceModeUsdUsd"
+                  value="manual"
+                  checked={priceModeUsdUsd === "manual"}
+                  onChange={() => setPriceModeUsdUsd("manual")}
+                />
+                <span>Manual (ask)</span>
+              </label>
+              <input
+                type="number"
+                step="0.000001"
+                placeholder="Precio USDT/USD (ask)"
+                className="px-3 py-1 rounded-xl border w-48 disabled:opacity-50"
+                value={manualUsdUsd}
+                onChange={(e) => setManualUsdUsd(e.target.value)}
+                disabled={priceModeUsdUsd !== "manual"}
+              />
+            </div>
+
+            <div className="flex items-center gap-4 ml-auto">
+              <button onClick={() => toggleAll("usdUsd", true)} className="px-3 py-1 rounded-xl border">Marcar todo</button>
+              <button onClick={() => toggleAll("usdUsd", false)} className="px-3 py-1 rounded-xl border">Desmarcar todo</button>
+            </div>
           </div>
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {usdtUsdAllowed.map((ex) => (
-              <label key={ex} className="flex items-center gap-2 p-2 rounded-xl border bg-white">
+              <label key={ex} className="flex items-center gap-2 p-2 rounded-xl border bg-white dark:bg-slate-800">
                 <input
                   type="checkbox"
                   checked={!!selectedUsdUsd[ex]}
@@ -222,14 +320,74 @@ function Arbitraje() {
           </div>
         </Section>
 
-        <Section title="2) Selección de exchanges (USDT/ARS)">
-          <div className="flex items-center gap-4 mb-3">
-            <button onClick={() => toggleAll("usdArs", true)} className="px-3 py-1 rounded-xl border">Marcar todo</button>
-            <button onClick={() => toggleAll("usdArs", false)} className="px-3 py-1 rounded-xl border">Desmarcar todo</button>
+        {/* USDT/ARS — con compra/venta y manual */}
+        <Section title="2) Selección de exchanges (USDT/ARS — elegir compra/venta)">
+          <div className="flex flex-wrap items-center gap-4 mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">Lado:</span>
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="sideUsdArs"
+                  value="compra"
+                  checked={sideUsdArs === "compra"}
+                  onChange={() => setSideUsdArs("compra")}
+                />
+                <span>Compra (ask)</span>
+              </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="sideUsdArs"
+                  value="venta"
+                  checked={sideUsdArs === "venta"}
+                  onChange={() => setSideUsdArs("venta")}
+                />
+                <span>Venta (bid)</span>
+              </label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="priceModeUsdArs"
+                  value="auto"
+                  checked={priceModeUsdArs === "auto"}
+                  onChange={() => setPriceModeUsdArs("auto")}
+                />
+                <span>Precio de la API</span>
+              </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="priceModeUsdArs"
+                  value="manual"
+                  checked={priceModeUsdArs === "manual"}
+                  onChange={() => setPriceModeUsdArs("manual")}
+                />
+                <span>Manual</span>
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Precio USDT/ARS"
+                className="px-3 py-1 rounded-xl border w-44 disabled:opacity-50"
+                value={manualUsdArs}
+                onChange={(e) => setManualUsdArs(e.target.value)}
+                disabled={priceModeUsdArs !== "manual"}
+              />
+            </div>
+
+            <div className="flex items-center gap-4 ml-auto">
+              <button onClick={() => toggleAll("usdArs", true)} className="px-3 py-1 rounded-xl border">Marcar todo</button>
+              <button onClick={() => toggleAll("usdArs", false)} className="px-3 py-1 rounded-xl border">Desmarcar todo</button>
+            </div>
           </div>
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {usdtArsAllowed.map((ex) => (
-              <label key={ex} className="flex items-center gap-2 p-2 rounded-xl border bg-white">
+              <label key={ex} className="flex items-center gap-2 p-2 rounded-xl border bg-white dark:bg-slate-800">
                 <input
                   type="checkbox"
                   checked={!!selectedUsdArs[ex]}
@@ -241,10 +399,10 @@ function Arbitraje() {
           </div>
         </Section>
 
-        {/* NUEVO: filtro entre paso 2 y 3 */}
+        {/* Cotización USD final */}
         <Section title="3) Cotización para compra de USD (elegí fuente)">
           <div className="grid gap-3">
-            <label className="flex items-center gap-2 p-3 rounded-xl border bg-white">
+            <label className="flex items-center gap-2 p-3 rounded-xl border bg-white dark:bg-slate-800">
               <input
                 type="radio"
                 name="rateMode"
@@ -258,7 +416,7 @@ function Arbitraje() {
               )}
             </label>
 
-            <label className="flex flex-col gap-2 p-3 rounded-xl border bg-white">
+            <label className="flex flex-col gap-2 p-3 rounded-xl border bg-white dark:bg-slate-800">
               <span className="flex items-center gap-2">
                 <input
                   type="radio"
@@ -285,12 +443,13 @@ function Arbitraje() {
           </div>
         </Section>
 
+        {/* Calcular */}
         <Section title="4) Calcular ciclo de arbitraje">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <button
               onClick={fetchAll}
               disabled={loading}
-              className="px-4 py-2 rounded-2xl shadow bg-white border hover:shadow-md disabled:opacity-60"
+              className="px-4 py-2 rounded-2xl shadow bg-white dark:bg-slate-800 border hover:shadow-md disabled:opacity-60"
             >
               {loading ? "Calculando..." : "Calcular ahora"}
             </button>
@@ -300,26 +459,28 @@ function Arbitraje() {
           </div>
 
           {error && (
-            <div className="mt-4 p-3 rounded-xl border bg-red-50 text-red-700">
+            <div className="mt-4 p-3 rounded-xl border bg-red-50 text-red-700 dark:bg-red-900/30 dark:border-red-800">
               {error}
             </div>
           )}
 
           {result && (
             <div className="mt-4 grid gap-3">
-              <div className="p-4 rounded-2xl border bg-white">
+              <div className="p-4 rounded-2xl border bg-white dark:bg-slate-800">
                 <h3 className="font-semibold mb-2">Paso 1: Compra de USDT con USD</h3>
                 <p className="text-sm">Exchange: <strong>{result.step1?.exchange}</strong> — ask: <strong>{result.step1?.ask?.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 6 })}</strong> (USDT/USD)</p>
                 <p className="text-sm">USDT obtenidos desde 1 USD: <strong>{result.step1?.usdtObtained?.toLocaleString("es-AR", { minimumFractionDigits: 6, maximumFractionDigits: 6 })}</strong></p>
               </div>
 
-              <div className="p-4 rounded-2xl border bg-white">
-                <h3 className="font-semibold mb-2">Paso 2: Venta de USDT por ARS</h3>
-                <p className="text-sm">Exchange: <strong>{result.step2?.exchange}</strong> — bid: <strong>{result.step2?.bid?.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> (ARS/USDT)</p>
+              <div className="p-4 rounded-2xl border bg-white dark:bg-slate-800">
+                <h3 className="font-semibold mb-2">Paso 2: USDT ↔ ARS</h3>
+                <p className="text-sm">
+                  Lado: <strong>{result.step2?.side === "venta" ? "Venta (bid)" : "Compra (ask)"}</strong> — Exchange: <strong>{result.step2?.exchange}</strong> — precio: <strong>{result.step2?.price?.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> (ARS/USDT)
+                </p>
                 <p className="text-sm">ARS obtenidos: <strong>{result.step2?.arsObtained?.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
               </div>
 
-              <div className="p-4 rounded-2xl border bg-white">
+              <div className="p-4 rounded-2xl border bg-white dark:bg-slate-800">
                 <h3 className="font-semibold mb-2">Paso 3: Compra de USD con ARS</h3>
                 <div className="flex items-center gap-2 mb-1">
                   <Pill>Fuente: {result.step3?.nombre}</Pill>
@@ -328,7 +489,7 @@ function Arbitraje() {
                 <p className="text-sm">USD finales: <strong>{result.step3?.usdFinal?.toLocaleString("es-AR", { minimumFractionDigits: 6, maximumFractionDigits: 6 })}</strong></p>
               </div>
 
-              <div className="p-4 rounded-2xl border bg-white flex items-center justify-between">
+              <div className="p-4 rounded-2xl border bg-white dark:bg-slate-800 flex items-center justify-between">
                 <div>
                   <div className="text-sm">Fecha de consulta (America/Argentina/Buenos_Aires):</div>
                   <div className="font-semibold">{result.timestamp}</div>
@@ -341,7 +502,14 @@ function Arbitraje() {
                 </div>
               </div>
 
-              
+              <div className="p-4 rounded-2xl border bg-white dark:bg-slate-800">
+                <h3 className="font-semibold mb-2">Datos crudos (depuración rápida)</h3>
+                <div className="text-xs max-h-72 overflow-auto whitespace-pre-wrap break-all">
+                  <p className="mb-2"><strong>USDT/USD (CriptoYa):</strong> {usdtUsdData ? JSON.stringify(usdtUsdData) : "—"}</p>
+                  <p className="mb-2"><strong>USDT/ARS (CriptoYa):</strong> {usdtArsData ? JSON.stringify(usdtArsData) : "—"}</p>
+                  <p className="mb-2"><strong>DolarAPI oficial:</strong> {dolarOficial ? JSON.stringify(dolarOficial) : "—"}</p>
+                </div>
+              </div>
             </div>
           )}
         </Section>
