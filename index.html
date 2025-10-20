@@ -3,25 +3,41 @@
   <head>
     <!-- Tailwind CSS (Play CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Usar estrategia por clase para el modo oscuro (en lugar de 'media')
+      tailwind.config = { darkMode: 'class' };
+    </script>
+
+    <!-- Aplicar tema guardado lo antes posible (evita flash) -->
+    <script>
+      (function () {
+        try {
+          const saved = localStorage.getItem('theme');
+          if (saved === 'dark') document.documentElement.classList.add('dark');
+          if (saved === 'light') document.documentElement.classList.remove('dark');
+        } catch (_) {}
+      })();
+    </script>
 
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>App Arbitrage</title>
 
-    <!-- React 18 y ReactDOM desde CDN -->
+    <!-- React 18 y ReactDOM desde CDN (UMD) -->
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     
     <!-- Babel Standalone para interpretar JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   </head>
-  <body>
+  <body class="bg-slate-100 dark:bg-slate-900">
     <div id="root"></div>
 
-    <!-- Cargar tu archivo JSX -->
+    <!-- Tu app en JSX -->
     <script type="text/babel" data-presets="react" src="./arbitraje.jsx"></script>
   </body>
 </html>
+
 
 
 
