@@ -514,14 +514,7 @@ function Arbitraje() {
                 </div>
               </div>
 
-              <div className="p-4 rounded-2xl border bg-white dark:bg-slate-800">
-                <h3 className="font-semibold mb-2">Datos crudos (depuración rápida)</h3>
-                <div className="text-xs max-h-72 overflow-auto whitespace-pre-wrap break-all">
-                  <p className="mb-2"><strong>USDT/USD (CriptoYa):</strong> {usdtUsdData ? JSON.stringify(usdtUsdData) : "—"}</p>
-                  <p className="mb-2"><strong>USDT/ARS (CriptoYa):</strong> {usdtArsData ? JSON.stringify(usdtArsData) : "—"}</p>
-                  <p className="mb-2"><strong>DolarAPI oficial:</strong> {dolarOficial ? JSON.stringify(dolarOficial) : "—"}</p>
-                </div>
-              </div>
+              
             </div>
           )}
         </Section>
